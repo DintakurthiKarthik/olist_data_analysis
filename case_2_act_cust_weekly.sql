@@ -1,0 +1,13 @@
+with customers_list as (
+  select c.customer_unique_id,o.order_id,o.order_purchase_timestamp from `composed-region-358911.olist.customers_ds` c 
+join `composed-region-358911.olist.orders_ds` o on c.customer_id = o.customer_id
+),
+
+week_data as 
+(select order_id, order_purchase_timestamp, extract(week from order_purchase_timestamp) as week from `composed-region-358911.olist.orders_ds` 
+where order_purchase_timestamp between "2017-01-01" and "2017-12-31"  
+)
+
+select customer_unique_id,week_data.order_purchase_timestamp,week, dense_rank() over(partition by customers_list.customer_unique_id order by customers_list.order_purchase_timestamp) as rank 
+from customers_list join week_data on customers_list.order_id=week_data.order_id
+order by 3
