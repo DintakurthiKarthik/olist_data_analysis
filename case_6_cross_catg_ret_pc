@@ -1,0 +1,65 @@
+with ret_cust as (select customer_unique_id from (
+    select customer_unique_id, count(customer_unique_id) num_of_orders, from (
+        select c.customer_unique_id, c.customer_id, o.order_id from `composed-region-358911.olist.customers_ds` c join
+        `composed-region-358911.olist.orders_ds` o on c.customer_id =o.customer_id)
+    group by 1
+    order by 2 desc
+  ) 
+where num_of_orders >=2
+),
+
+cust_list as (
+
+select ret_cust.customer_unique_id, c.customer_id from ret_cust join `composed-region-358911.olist.customers_ds` c
+on ret_cust.customer_unique_id= c.customer_unique_id),
+
+cust_order_list as (
+select cust_list.customer_unique_id, o.order_id, o.order_purchase_timestamp from cust_list 
+join `composed-region-358911.olist.orders_ds` o on cust_list.customer_id=o.customer_id
+),
+
+cust_prod_list as (
+select cust_order_list.*,oi.product_id from cust_order_list join `composed-region-358911.olist.order_items_ds` oi
+on cust_order_list.order_id=oi.order_id
+),
+
+prod_category_num as 
+(select distinct product_category_name, row_number() over() indx from composed-region-358911.olist.products_ds
+group by 1),
+
+cross_catg as (
+ select customer_unique_id,order_id,product_category_name,rank from (
+  select *, row_number() over(partition by customer_unique_id order by order_purchase_timestamp) rank from(
+    select cust_prod_list.*,p.product_category_name from cust_prod_list join `composed-region-358911.olist.products_ds`p
+    on cust_prod_list.product_id=p.product_id
+    group by 1,2,3,4,5)
+order by 1)
+),
+cross_catg_ret as (
+select cross_catg.*,prod_category_num.indx from cross_catg left join prod_category_num on cross_catg.product_category_name= prod_category_num.product_category_name
+order by 1),
+
+cross_catg_ret_idf as (select *, indx-next_category_num as catg_ret from ( select cross_catg_ret.*, lag(indx) over (partition by customer_unique_id order by cross_catg_ret.rank) next_category_num from cross_catg_ret
+order by 1)
+order by 1),
+
+percentages as (select count(order_id) cross_ret_pc from cross_catg_ret_idf
+where catg_ret is not null and catg_ret !=0
+union all
+
+select count(order_id) total_order_pc from cross_catg_ret_idf)
+
+select round((min(cross_ret_pc)/max(cross_ret_pc))*100,2) cross_category_retention_pc from percentages
+
+
+
+
+
+
+
+
+
+
+
+
+
